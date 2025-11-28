@@ -132,7 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
             "The file 'Project_Specs.pdf' mentions that the deadline is set for Q4 2024.",
             "I can confirm that the security protocols require JWT authentication as per the documentation.",
             "That's a great question. The documents suggest using FAISS for vector search to optimize performance.",
-            "According to the executive summary, the primary goal is to improve document retrieval efficiency by 40%."
+            "According to the executive summary, the primary goal is to improve document retrieval efficiency by 40%.",
+            "Hello, how can i help you ?"
         ];
         return responses[Math.floor(Math.random() * responses.length)];
     }
