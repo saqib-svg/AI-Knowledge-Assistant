@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,6 +12,7 @@
     <!-- Using FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Sidebar / Upload Section -->
@@ -19,16 +21,17 @@
                 <i class="fa-solid fa-robot"></i>
                 <h1>DocAssist AI</h1>
             </div>
-            
+
             <div class="upload-section">
                 <h2>Knowledge Base</h2>
                 <div class="drop-zone" id="drop-zone">
                     <i class="fa-solid fa-cloud-arrow-up"></i>
                     <p>Drag & Drop PDF/Docx here</p>
-                    <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Browse Files</button>
+                    <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Browse
+                        Files</button>
                     <input type="file" id="file-input" hidden multiple accept=".pdf,.docx">
                 </div>
-                
+
                 <div class="file-list" id="file-list">
                     <!-- Files will appear here -->
                 </div>
@@ -63,7 +66,8 @@
                 <div class="message ai-message">
                     <div class="avatar"><i class="fa-solid fa-robot"></i></div>
                     <div class="content">
-                        Hello! I'm your AI Document Assistant. Upload a document to the left and ask me anything about it.
+                        Hello! I'm your AI Document Assistant. Upload a document to the left and ask me anything about
+                        it.
                     </div>
                 </div>
             </div>
@@ -78,7 +82,55 @@
         </main>
     </div>
 
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="auth-title">Login</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn-primary" id="auth-submit-btn">Login</button>
+                <p class="auth-toggle">
+                    <span id="auth-toggle-text">Don't have an account?</span>
+                    <a href="#" id="auth-toggle-link">Register</a>
+                </p>
+            </form>
+
+            <form id="register-form" style="display: none;">
+                <div class="form-group">
+                    <label for="reg-username">Username</label>
+                    <input type="text" id="reg-username" name="username" required minlength="3">
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="reg-fullname">Full Name</label>
+                    <input type="text" id="reg-fullname" name="full_name" required>
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" name="password" required minlength="6">
+                </div>
+                <button type="submit" class="btn-primary" id="register-submit-btn">Register</button>
+                <p class="auth-toggle">
+                    <span id="register-toggle-text">Already have an account?</span>
+                    <a href="#" id="register-toggle-link">Login</a>
+                </p>
+            </form>
+            <div id="auth-error" class="error-message" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
     <script src="script.js"></script>
 </body>
+
 </html>
- 
