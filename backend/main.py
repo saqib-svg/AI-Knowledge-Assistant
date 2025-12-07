@@ -225,6 +225,7 @@ async def ingest_documents(
 
 class QueryRequest(BaseModel):
     query: str
+    doc_ids: List[str] = None  # Optional: filter by specific document IDs
 
 @app.post("/query")
 async def query_knowledge_base(
@@ -234,21 +235,28 @@ async def query_knowledge_base(
     """Query the knowledge base"""
     redis_client = get_redis_client()
     
+    # Create cache key including doc_ids for proper caching
+    cache_key = f"{request.query}:{','.join(request.doc_ids) if request.doc_ids else 'all'}"
+    
     # 1. Check Cache
     if redis_client:
         try:
-            cached_response = redis_client.get(request.query)
+            cached_response = redis_client.get(cache_key)
             if cached_response:
                 logger.info(f"Cache hit for query: {request.query[:50]}...")
                 return {"response": cached_response, "source": "cache"}
         except Exception as e:
             logger.warning(f"Redis error: {e}")
     
-    # 2. Vector Search
+    # 2. Vector Search (with optional doc_ids filter)
     query_embedding = get_embedding(request.query)
+<<<<<<< Updated upstream
     logger.info(f"Query embedding generated, shape: {len(query_embedding) if query_embedding else 0}")
     retrieved_docs = search_documents(query_embedding)
     logger.info(f"Vector search returned {len(retrieved_docs) if retrieved_docs else 0} documents")
+=======
+    retrieved_docs = search_documents(query_embedding, doc_ids=request.doc_ids)
+>>>>>>> Stashed changes
     
     # 3. Generate Answer
     if retrieved_docs:
@@ -260,7 +268,7 @@ async def query_knowledge_base(
     # 4. Cache Response
     if redis_client:
         try:
-            redis_client.setex(request.query, 3600, answer)  # Cache for 1 hour
+            redis_client.setex(cache_key, 3600, answer)  # Cache for 1 hour
         except Exception as e:
             logger.warning(f"Redis cache error: {e}")
     

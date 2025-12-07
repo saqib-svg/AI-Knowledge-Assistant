@@ -80,6 +80,8 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -95,12 +97,12 @@ services:
       - ELASTICSEARCH_HOST=http://elasticsearch:9200
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this-in-production}
       - JWT_ALGORITHM=HS256
-      - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      - LOG_FILE=/app/logs/app.log
 
   celery_worker:
     build:
@@ -112,6 +114,8 @@ services:
       - rabbitmq
       - elasticsearch
       - app
+    volumes:
+      - ./logs:/app/logs
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_USER=${RABBITMQ_USER:-guest}
@@ -123,6 +127,22 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      - LOG_FILE=/app/logs/worker.log
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.1
+    container_name: ai-assistant-logstash
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    volumes:
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./logs:/var/log/app:ro
+    depends_on:
+      - elasticsearch
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - XPACK_MONITORING_ENABLED=false
 
   nginx:
     image: nginx:alpine

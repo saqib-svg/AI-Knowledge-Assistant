@@ -83,12 +83,27 @@ class MessageModel(Base):
     chat = relationship("ChatModel", backref="messages")
 
 # Create all tables
-def init_db():
-    try:
-        Base.metadata.create_all(bind=engine)
-        print("✓ Database tables created successfully")
-    except Exception as e:
-        print(f"✗ Error creating database tables: {e}")
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+def init_db(max_retries=5, delay=3):
+    retries = 0
+    while retries < max_retries:
+        try:
+            Base.metadata.create_all(bind=engine)
+            logger.info("✓ Database tables created successfully")
+            return
+        except Exception as e:
+            retries += 1
+            logger.warning(f"⚠ Database connection attempt {retries} failed: {e}")
+            if retries < max_retries:
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                logger.error("✗ Failed to create database tables after multiple attempts")
+                raise e
 
 # Dependency to get database session
 def get_db():

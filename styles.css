@@ -390,9 +390,26 @@ body {
     color: var(--text-muted);
 }
 
+<<<<<<< Updated upstream
 /* MAIN AREA */
 .main-area {
     flex: 1;
+=======
+/* Document selection checkbox */
+.doc-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.status-card {
+    margin-top: auto;
+    background: #f9fafb;
+    padding: 1rem;
+    border-radius: var(--radius-lg);
+>>>>>>> Stashed changes
     display: flex;
     flex-direction: column;
     background: var(--bg-main);

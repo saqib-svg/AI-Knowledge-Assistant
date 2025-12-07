@@ -60,8 +60,11 @@ def generate_answer(context: str, query: str) -> str:
     Returns:
         The generated answer
     """
+    logger.info(f"generate_answer called - LLM_PROVIDER: {LLM_PROVIDER}, gemini_model: {gemini_model is not None}")
+    
     if LLM_PROVIDER == "gemini" and gemini_model:
         try:
+            logger.info("Calling Gemini API to generate answer...")
             prompt = f"""Based on the following context, please answer the question. If the answer cannot be found in the context, say "I don't have enough information to answer that question."
 
 Context:
@@ -73,14 +76,22 @@ Answer:"""
             
             logger.info(f"Calling Gemini with query: {query[:100]}")
             response = gemini_model.generate_content(prompt)
+<<<<<<< Updated upstream
             logger.info(f"Gemini response received: {response.text[:100]}")
+=======
+            logger.info(f"Gemini API call successful. Response length: {len(response.text)}")
+>>>>>>> Stashed changes
             return response.text
         except ResourceExhausted:
             logger.warning("Gemini quota exceeded (ResourceExhausted)")
             return "I'm currently overloaded (Gemini quota exceeded). Please try again in a minute."
         except Exception as e:
             logger.error(f"Error generating answer with Gemini: {e}", exc_info=True)
+<<<<<<< Updated upstream
             return f"I encountered an error while processing your question. Please try again."
+=======
+            return f"I encountered an error while processing your question: {str(e)}"
+>>>>>>> Stashed changes
     
     elif LLM_PROVIDER == "openai":
         try:

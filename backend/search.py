@@ -43,6 +43,7 @@ def index_document(doc_id, content, embedding, metadata):
         }
     )
 
+<<<<<<< Updated upstream
 def search_documents(query_embedding, allowed_ids=None, top_k=3):
     """Search documents by vector. If `allowed_ids` is provided, restrict search to those ES document ids."""
     if es_client is None:
@@ -70,6 +71,45 @@ def search_documents(query_embedding, allowed_ids=None, top_k=3):
     response = es_client.search(
         index=INDEX_NAME,
         query=script_score,
+=======
+def search_documents(query_embedding, top_k=3, doc_ids=None):
+    """
+    Search for documents by embedding similarity.
+    
+    Args:
+        query_embedding: The query embedding vector
+        top_k: Number of results to return
+        doc_ids: Optional list of doc_ids to filter by
+    """
+    if es_client is None:
+        print("Elasticsearch client not available, returning empty results")
+        return []
+    
+    # Build the query - filter by doc_ids if provided
+    if doc_ids and len(doc_ids) > 0:
+        base_query = {
+            "bool": {
+                "filter": [
+                    {"terms": {"metadata.doc_id": doc_ids}}
+                ]
+            }
+        }
+    else:
+        base_query = {"match_all": {}}
+    
+    response = es_client.search(
+        index=INDEX_NAME,
+        query={
+            "script_score": {
+                "query": base_query,
+                "script": {
+                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                    "params": {"query_vector": query_embedding}
+                }
+            }
+        },
+>>>>>>> Stashed changes
         size=top_k
     )
     return [hit["_source"] for hit in response["hits"]["hits"]]
+

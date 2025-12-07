@@ -5,6 +5,7 @@ const API_URL = window.CONFIG.API_BASE_URL;
 // Debug logging
 console.log('API URL:', API_URL);
 
+<<<<<<< Updated upstream
 let accessToken = '';
 let selectedChatId = '';
 let currentMessages = [];
@@ -21,6 +22,48 @@ function initializeAuth() {
         console.log('No access token found, redirecting to login...');
         window.location.href = '/login.html';
         return;
+=======
+    // Track uploaded documents with their IDs for filtering
+    let uploadedDocs = JSON.parse(localStorage.getItem('uploaded_docs') || '[]');
+
+    // --- Chat History Persistence ---
+
+    function saveChatHistory() {
+        const messages = [...chatHistory.querySelectorAll('.message:not(.typing-indicator-msg)')]
+            .map(m => ({
+                isUser: m.classList.contains('user-message'),
+                text: m.querySelector('.content').innerHTML
+            }));
+        localStorage.setItem('chat_history', JSON.stringify(messages));
+    }
+
+    function loadChatHistory() {
+        const saved = localStorage.getItem('chat_history');
+        if (saved) {
+            const messages = JSON.parse(saved);
+            // Keep the initial welcome message, add saved messages
+            messages.forEach(m => addMessage(m.text, m.isUser, false));
+        }
+    }
+
+    function clearChatHistory() {
+        // Remove all messages except the first welcome message
+        const messages = chatHistory.querySelectorAll('.message');
+        messages.forEach((msg, index) => {
+            if (index > 0) msg.remove();
+        });
+        localStorage.removeItem('chat_history');
+    }
+
+    // --- Auth Handling ---
+
+    if (!accessToken) {
+        loginModal.style.display = 'flex';
+    } else {
+        // Load chat history if logged in
+        loadChatHistory();
+        loadUploadedDocs();
+>>>>>>> Stashed changes
     }
 
     console.log('✓ Auth initialized. Token:', accessToken ? accessToken.substring(0, 20) + '...' : 'none');
@@ -47,8 +90,26 @@ async function loadChats() {
             }
         });
 
+<<<<<<< Updated upstream
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
+=======
+            const data = await response.json();
+            accessToken = data.access_token;
+            localStorage.setItem('access_token', accessToken);
+            loginModal.style.display = 'none';
+            loginForm.reset();
+
+            // Load chat history after login
+            loadChatHistory();
+            loadUploadedDocs();
+
+            // Welcome message
+            addMessage('Welcome back! You can now upload documents and ask questions.', false);
+        } catch (error) {
+            authError.textContent = error.message;
+            authError.style.display = 'block';
+>>>>>>> Stashed changes
         }
 
         const chats = await response.json();
@@ -130,8 +191,18 @@ async function createChat() {
 
         const newChat = await response.json();
 
+<<<<<<< Updated upstream
         // Clear the input
         if (titleInput) titleInput.value = '';
+=======
+    // Prevent double-click issue: only trigger fileInput from dropZone if not clicking the button
+    dropZone.addEventListener('click', (e) => {
+        // Don't trigger if clicking the button (button has its own onclick)
+        if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+            fileInput.click();
+        }
+    });
+>>>>>>> Stashed changes
 
         // Reload chats
         await loadChats();
@@ -145,8 +216,16 @@ async function createChat() {
     }
 }
 
+<<<<<<< Updated upstream
 async function deleteChat(event, chatId) {
     event.stopPropagation();
+=======
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+        // Reset file input to allow uploading the same file again
+        fileInput.value = '';
+    });
+>>>>>>> Stashed changes
 
     if (!confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
         return;
@@ -206,6 +285,7 @@ async function loadMessages() {
     }
 }
 
+<<<<<<< Updated upstream
 function renderMessages() {
     const messagesContainer = document.getElementById('messages');
     if (!messagesContainer) return;
@@ -493,10 +573,35 @@ function setupEventListeners() {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
+=======
+                if (response.ok) {
+                    const data = await response.json();
+                    // Store doc_id from response for filtering
+                    if (data.files && data.files[0] && data.files[0].doc_id) {
+                        const docInfo = {
+                            filename: file.name,
+                            doc_id: data.files[0].doc_id,
+                            selected: true // Default selected
+                        };
+                        uploadedDocs.push(docInfo);
+                        localStorage.setItem('uploaded_docs', JSON.stringify(uploadedDocs));
+                        updateFileItemWithCheckbox(file.name, data.files[0].doc_id);
+                    }
+                    updateFileStatus(file.name, 'Ingested');
+                } else {
+                    const error = await response.json();
+                    updateFileStatus(file.name, 'Failed');
+                    console.error('Upload error:', error);
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                updateFileStatus(file.name, 'Error');
+>>>>>>> Stashed changes
             }
         });
     }
 
+<<<<<<< Updated upstream
     // File upload
     if (fileUploadBtn && fileInput) {
         fileUploadBtn.addEventListener('click', () => fileInput.click());
@@ -509,17 +614,136 @@ function setupEventListeners() {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 createChat();
+=======
+    function loadUploadedDocs() {
+        // Reload previously uploaded docs into the file list
+        uploadedDocs.forEach(doc => {
+            addFileToListFromStorage(doc);
+        });
+    }
+
+    function addFileToListFromStorage(doc) {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.id = `file-${doc.filename.replace(/\s+/g, '-')}`;
+        fileItem.dataset.docId = doc.doc_id;
+
+        const iconClass = doc.filename.endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-word';
+
+        fileItem.innerHTML = `
+            <input type="checkbox" class="doc-checkbox" data-doc-id="${doc.doc_id}" ${doc.selected ? 'checked' : ''} title="Include in search">
+            <i class="fa-solid ${iconClass}"></i>
+            <div class="file-info">
+                <span class="file-name" title="${doc.filename}">${doc.filename}</span>
+                <span class="file-status">Ingested</span>
+            </div>
+            <i class="fa-solid fa-check-circle" style="color: #10b981;"></i>
+        `;
+
+        // Handle checkbox changes
+        fileItem.querySelector('.doc-checkbox').addEventListener('change', (e) => {
+            const docId = e.target.dataset.docId;
+            const docIndex = uploadedDocs.findIndex(d => d.doc_id === docId);
+            if (docIndex !== -1) {
+                uploadedDocs[docIndex].selected = e.target.checked;
+                localStorage.setItem('uploaded_docs', JSON.stringify(uploadedDocs));
+            }
+        });
+
+        fileList.prepend(fileItem);
+    }
+
+    function addFileToList(file) {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.id = `file-${file.name.replace(/\s+/g, '-')}`;
+
+        const iconClass = file.name.endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-word';
+
+        fileItem.innerHTML = `
+            <i class="fa-solid ${iconClass}"></i>
+            <div class="file-info">
+                <span class="file-name" title="${file.name}">${file.name}</span>
+                <span class="file-status">Uploading...</span>
+            </div>
+            <i class="fa-solid fa-check-circle" style="color: #10b981; display: none;"></i>
+        `;
+
+        fileList.prepend(fileItem);
+    }
+
+    function updateFileItemWithCheckbox(fileName, docId) {
+        const safeName = fileName.replace(/\s+/g, '-');
+        const item = document.getElementById(`file-${safeName}`);
+        if (item) {
+            item.dataset.docId = docId;
+            // Add checkbox at the beginning
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'doc-checkbox';
+            checkbox.dataset.docId = docId;
+            checkbox.checked = true;
+            checkbox.title = 'Include in search';
+            checkbox.addEventListener('change', (e) => {
+                const docIndex = uploadedDocs.findIndex(d => d.doc_id === docId);
+                if (docIndex !== -1) {
+                    uploadedDocs[docIndex].selected = e.target.checked;
+                    localStorage.setItem('uploaded_docs', JSON.stringify(uploadedDocs));
+                }
+            });
+            item.insertBefore(checkbox, item.firstChild);
+        }
+    }
+
+    function updateFileStatus(fileName, status) {
+        const safeName = fileName.replace(/\s+/g, '-');
+        const item = document.getElementById(`file-${safeName}`);
+        if (item) {
+            const statusSpan = item.querySelector('.file-status');
+            statusSpan.textContent = status;
+            if (status === 'Ingested') {
+                item.querySelector('.fa-check-circle').style.display = 'block';
+>>>>>>> Stashed changes
             }
         });
     }
 }
 
+<<<<<<< Updated upstream
 function loadInitialData() {
     // Load chats if user is authenticated
     if (accessToken) {
         loadChats().catch(error => {
             console.error('Error loading initial data:', error);
         });
+=======
+    function getSelectedDocIds() {
+        return uploadedDocs
+            .filter(doc => doc.selected)
+            .map(doc => doc.doc_id);
+    }
+
+    // --- Chat Handling ---
+
+    function addMessage(text, isUser = false, save = true) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+
+        const avatarIcon = isUser ? 'fa-user' : 'fa-robot';
+
+        messageDiv.innerHTML = `
+            <div class="avatar"><i class="fa-solid ${avatarIcon}"></i></div>
+            <div class="content">${text}</div>
+        `;
+
+        chatHistory.appendChild(messageDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+
+        // Save chat history after each message
+        if (save) {
+            saveChatHistory();
+        }
+>>>>>>> Stashed changes
     }
 }
 
@@ -541,6 +765,7 @@ if (document.readyState === 'loading') {
     setTimeout(initApp, 0);
 }
 
+<<<<<<< Updated upstream
 // Expose functions to window for debugging
 window.app = {
     logout,
@@ -551,3 +776,69 @@ window.app = {
     deleteChat,
     deleteDocument
 };
+=======
+        // Add user message
+        addMessage(text, true);
+        userInput.value = '';
+        userInput.style.height = 'auto'; // Reset height
+
+        const typingIndicator = showTypingIndicator();
+
+        // Get selected document IDs for filtering
+        const selectedDocIds = getSelectedDocIds();
+
+        try {
+            const response = await fetch(`${API_URL}/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    query: text,
+                    doc_ids: selectedDocIds.length > 0 ? selectedDocIds : null
+                })
+            });
+
+            typingIndicator.remove();
+
+            if (response.ok) {
+                const data = await response.json();
+                addMessage(data.response);
+            } else {
+                const error = await response.json();
+                addMessage(`Sorry, I encountered an error: ${error.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            typingIndicator.remove();
+            console.error('Query error:', error);
+            addMessage("Sorry, I couldn't reach the server. Please check your connection.");
+        }
+    }
+
+    sendBtn.addEventListener('click', handleSend);
+
+    userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    });
+
+    // Auto-resize textarea
+    userInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    // Clear chat button handler
+    const clearChatBtn = document.querySelector('.icon-btn[title="Clear Chat"]');
+    if (clearChatBtn) {
+        clearChatBtn.addEventListener('click', () => {
+            if (confirm('Clear all chat history?')) {
+                clearChatHistory();
+            }
+        });
+    }
+});
+>>>>>>> Stashed changes
