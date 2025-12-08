@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import uuid
 import io
 import logging
+import traceback
 
 # PDF and DOCX parsing
 try:
@@ -33,8 +34,11 @@ from .search import create_index, search_documents
 from .llm import generate_answer, get_embedding
 from .celery_worker import process_document
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -75,7 +79,6 @@ async def health_check():
 @app.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
 async def register_user(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
-    # Check if username already exists
     db_user = get_user_by_username(db, user.username)
     if db_user:
         raise HTTPException(
@@ -83,7 +86,6 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
             detail="Username already registered"
         )
     
-    # Check if email already exists
     db_user = get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(
@@ -91,7 +93,6 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
     
-    # Create new user
     new_user = create_user(db, user)
     logger.info(f"New user registered: {user.username}")
     return new_user
@@ -182,7 +183,6 @@ async def ingest_documents(
             elif file.filename.lower().endswith('.docx'):
                 text_content = extract_text_from_docx(content)
             else:
-                # Try UTF-8 decode for text files
                 try:
                     text_content = content.decode("utf-8")
                 except:
@@ -260,7 +260,7 @@ async def query_knowledge_base(
     # 4. Cache Response
     if redis_client:
         try:
-            redis_client.setex(request.query, 3600, answer)  # Cache for 1 hour
+            redis_client.setex(request.query, 3600, answer)
         except Exception as e:
             logger.warning(f"Redis cache error: {e}")
     
@@ -310,7 +310,6 @@ async def delete_chat(chat_id: int, db: Session = Depends(get_db), current_user:
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
         
-        # Manually delete related records (simulating CASCADE)
         db.query(MessageModel).filter(MessageModel.chat_id == chat_id).delete()
         db.query(ChatDocumentModel).filter(ChatDocumentModel.chat_id == chat_id).delete()
         
@@ -333,7 +332,7 @@ async def upload_documents_to_chat(chat_id: int, files: List[UploadFile] = File(
     for file in files:
         try:
             content = await file.read()
-            # extract text
+            
             if file.filename.lower().endswith('.pdf'):
                 text_content = extract_text_from_pdf(content)
             elif file.filename.lower().endswith('.docx'):
@@ -349,7 +348,6 @@ async def upload_documents_to_chat(chat_id: int, files: List[UploadFile] = File(
 
             es_id = str(uuid.uuid4())
             
-            # Synchronously create DB records
             doc = DocumentModel(
                 es_id=es_id, 
                 filename=file.filename, 
@@ -364,16 +362,15 @@ async def upload_documents_to_chat(chat_id: int, files: List[UploadFile] = File(
             db.add(link)
             db.commit()
             
-            # Trigger Celery Task for Indexing ONLY
             logger.info(f"Triggering Celery task for {file.filename} (es_id: {es_id})")
             try:
                 task = process_document.delay(es_id, text_content, file.filename)
                 logger.info(f"Celery task triggered: {task.id}")
             except Exception as celery_error:
                 logger.error(f"Failed to trigger Celery task: {celery_error}")
+                logger.error(traceback.format_exc())
                 raise celery_error
             
-            # Set initial status in Redis
             redis_client = get_redis_client()
             if redis_client:
                 try:
@@ -381,15 +378,12 @@ async def upload_documents_to_chat(chat_id: int, files: List[UploadFile] = File(
                     logger.info(f"Set Redis status to processing for {es_id}")
                 except Exception as e:
                     logger.warning(f"Redis error setting status: {e}")
-            else:
-                logger.warning("Redis client not available for setting status")
             
             results.append({"filename": file.filename, "es_id": es_id, "task_id": task.id, "status": "Processing"})
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error uploading {file.filename}: {e}")
-            import traceback
             logger.error(traceback.format_exc())
             results.append({"filename": file.filename, "status": "Failed", "error": str(e)})
 
@@ -411,7 +405,7 @@ async def list_chat_documents(chat_id: int, db: Session = Depends(get_db), curre
         status = "unknown"
         if redis_client:
             try:
-                status = redis_client.get(f"doc_status:{d.es_id}") or "ready" # Default to ready if key expired/missing (assuming old docs are done)
+                status = redis_client.get(f"doc_status:{d.es_id}") or "ready"
             except:
                 pass
         results.append({
@@ -453,143 +447,125 @@ class MessageCreate(BaseModel):
 @app.post("/chats/{chat_id}/messages")
 async def create_chat_message(chat_id: int, msg: MessageCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
-    1. Save user message
-    2. Run RAG/LLM
-    3. Save AI message
-    4. Return AI message
+    Enhanced message creation with better error handling and logging
     """
-    chat = db.query(ChatModel).filter(ChatModel.id == chat_id, ChatModel.user_id == current_user.id).first()
-    if not chat:
-        raise HTTPException(status_code=404, detail="Chat not found")
-    
-    # 1. Save User Message
-    user_message = MessageModel(chat_id=chat_id, sender='user', content=msg.content)
-    db.add(user_message)
-    db.commit()
-    db.refresh(user_message)
-    
-    # 2. Run RAG/LLM Logic
-    
-    # Collect ES ids for docs linked to this chat
-    links = db.query(ChatDocumentModel).filter(ChatDocumentModel.chat_id == chat_id).all()
-    es_ids = []
-    for link in links:
-        doc = db.query(DocumentModel).get(link.document_id)
-        if doc and doc.es_id:
-            es_ids.append(doc.es_id)
-            
-    # Check Document Status
-    redis_client = get_redis_client()
-    if es_ids and redis_client:
-        processing_docs = []
-        for es_id in es_ids:
-            try:
-                status = redis_client.get(f"doc_status:{es_id}")
-                if status == "processing":
-                    processing_docs.append(es_id)
-            except:
-                pass
+    try:
+        chat = db.query(ChatModel).filter(ChatModel.id == chat_id, ChatModel.user_id == current_user.id).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
         
-        if processing_docs:
-            answer = "I am still processing the uploaded documents. Please wait a moment and try again."
-            # Save AI Message immediately and return
-            ai_message = MessageModel(chat_id=chat_id, sender='ai', content=answer)
-            db.add(ai_message)
-            db.commit()
-            db.refresh(ai_message)
-            return {
-                "user_message": {
-                    "id": user_message.id, 
-                    "content": user_message.content, 
-                    "created_at": user_message.created_at.isoformat()
-                },
-                "message": answer,
-                "ai_message": {
-                     "id": ai_message.id,
-                     "content": ai_message.content,
-                     "created_at": ai_message.created_at.isoformat()
-                },
-                "context": []
-            }
-
-    # Check Cache
-    redis_client = get_redis_client()
-    cached_answer = None
-    
-    # Create a cache key that includes the document context
-    # This ensures that if documents change (or are added), the cache is invalidated/bypassed for the same query
-    docs_hash = "nodocs"
-    if es_ids:
-        es_ids.sort()
-        import hashlib
-        docs_hash = hashlib.md5("".join(es_ids).encode()).hexdigest()
-    
-    cache_key = f"{msg.content}:{docs_hash}"
-    
-    if redis_client:
-        try:
-            cached_answer = redis_client.get(cache_key)
-        except Exception as e:
-            logger.warning(f"Redis error: {e}")
+        # 1. Save User Message
+        user_message = MessageModel(chat_id=chat_id, sender='user', content=msg.content)
+        db.add(user_message)
+        db.commit()
+        db.refresh(user_message)
+        logger.info(f"User message saved: {msg.content[:50]}...")
+        
+        # 2. Get document IDs for this chat
+        links = db.query(ChatDocumentModel).filter(ChatDocumentModel.chat_id == chat_id).all()
+        es_ids = []
+        for link in links:
+            doc = db.query(DocumentModel).get(link.document_id)
+            if doc and doc.es_id:
+                es_ids.append(doc.es_id)
+        
+        logger.info(f"Found {len(es_ids)} documents for chat {chat_id}: {es_ids}")
+        
+        # 3. Check Document Processing Status
+        redis_client = get_redis_client()
+        if es_ids and redis_client:
+            processing_docs = []
+            for es_id in es_ids:
+                try:
+                    status = redis_client.get(f"doc_status:{es_id}")
+                    logger.info(f"Document {es_id} status: {status}")
+                    if status == "processing":
+                        processing_docs.append(es_id)
+                except Exception as e:
+                    logger.warning(f"Error checking status for {es_id}: {e}")
             
-    answer = ""
-    retrieved_docs = []
-    
-    if cached_answer:
-        answer = cached_answer
-        logger.info(f"Cache hit for query: {msg.content[:20]}... (Key: {cache_key})")
-    else:
-        # Vector Search
+            if processing_docs:
+                answer = "I am still processing the uploaded documents. Please wait a moment and try again."
+                ai_message = MessageModel(chat_id=chat_id, sender='ai', content=answer)
+                db.add(ai_message)
+                db.commit()
+                db.refresh(ai_message)
+                return {
+                    "user_message": {
+                        "id": user_message.id, 
+                        "content": user_message.content, 
+                        "created_at": user_message.created_at.isoformat()
+                    },
+                    "message": answer,
+                    "ai_message": {
+                         "id": ai_message.id,
+                         "content": ai_message.content,
+                         "created_at": ai_message.created_at.isoformat()
+                    },
+                    "context": []
+                }
+        
+        # 4. Generate embedding and search
+        answer = ""
+        retrieved_docs = []
+        
         if es_ids:
-            logger.info(f"Searching with {len(es_ids)} document(s) context: {es_ids}")
             try:
+                logger.info(f"Generating embedding for query: {msg.content[:50]}...")
                 query_embedding = get_embedding(msg.content)
-                logger.info(f"Generated embedding for query: {msg.content[:20]}...")
+                logger.info(f"Embedding generated successfully, length: {len(query_embedding)}")
+                
+                logger.info(f"Searching documents with allowed_ids: {es_ids}")
                 retrieved_docs = search_documents(query_embedding, allowed_ids=es_ids)
-                logger.info(f"Retrieved {len(retrieved_docs)} documents from ES")
+                logger.info(f"Search completed. Retrieved {len(retrieved_docs)} documents")
                 
                 if retrieved_docs:
                     context = "\n\n".join([doc.get("content", "") for doc in retrieved_docs])
+                    logger.info(f"Context length: {len(context)} characters")
+                    
+                    logger.info("Generating answer with LLM...")
                     answer = generate_answer(context, msg.content)
+                    logger.info(f"Answer generated: {answer[:100]}...")
                 else:
-                    logger.info("No documents found in ES matching allowed_ids")
-                    answer = "I couldn't find any relevant information in the uploaded documents."
+                    logger.warning("No documents retrieved from search")
+                    answer = "I couldn't find any relevant information in the uploaded documents. Please make sure the documents are fully processed."
+                    
             except Exception as e:
-                logger.error(f"Error during RAG pipeline: {e}")
-                import traceback
+                logger.error(f"Error in RAG pipeline: {e}")
                 logger.error(traceback.format_exc())
-                answer = "I encountered an error while processing your question. Please try again."
+                answer = f"I encountered an error while processing your question: {str(e)}. Please try again or contact support if the issue persists."
         else:
-             # No documents attached, just use LLM directly or generic response
-             # For this app, let's assume we want to be helpful even without docs, or strictly require them.
-             # Given the prompt "AI-based document chat", let's try to answer generally or ask for docs.
-             answer = "Please upload documents to this chat so I can answer your questions based on them."
-
-        # Cache Response
-        if redis_client and answer:
-            try:
-                redis_client.setex(cache_key, 3600, answer)
-            except Exception as e:
-                logger.warning(f"Redis cache error: {e}")
-
-    # 3. Save AI Message
-    ai_message = MessageModel(chat_id=chat_id, sender='ai', content=answer)
-    db.add(ai_message)
-    db.commit()
-    db.refresh(ai_message)
-    
-    return {
-        "user_message": {
-            "id": user_message.id, 
-            "content": user_message.content, 
-            "created_at": user_message.created_at.isoformat()
-        },
-        "message": answer, # For frontend compatibility
-        "ai_message": {
-             "id": ai_message.id,
-             "content": ai_message.content,
-             "created_at": ai_message.created_at.isoformat()
-        },
-        "context": retrieved_docs
-    }
-
+            logger.info("No documents attached to this chat")
+            answer = "Please upload documents to this chat so I can answer your questions based on them."
+        
+        # 5. Save AI Message
+        ai_message = MessageModel(chat_id=chat_id, sender='ai', content=answer)
+        db.add(ai_message)
+        db.commit()
+        db.refresh(ai_message)
+        logger.info(f"AI message saved successfully")
+        
+        return {
+            "user_message": {
+                "id": user_message.id, 
+                "content": user_message.content, 
+                "created_at": user_message.created_at.isoformat()
+            },
+            "message": answer,
+            "ai_message": {
+                 "id": ai_message.id,
+                 "content": ai_message.content,
+                 "created_at": ai_message.created_at.isoformat()
+            },
+            "context": retrieved_docs
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in create_chat_message: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
